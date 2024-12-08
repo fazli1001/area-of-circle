@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract BabyEthereum is ERC20, Ownable {
+    uint256 public constant MAX_SUPPLY = 100000000000 * 10 18; // سقف 100 میلیارد توکن
+    uint256 public stakingRewardRate = 1000;
+    uint256 public constant OWNER_SHARE = 1000000000 * 10 **18;
+    uint256 public totalStaked;
+
+    address public constant developmentFund = 0x17d07c7b9e2bd1d57D9DB167374361062CcB2Ae3; // آدرس صندوق توسعه
+    struct Stake {
+    uint256 amount;
+    uint256 startTime;
+    }
+    mapping(address => Stake) public stakes;
+    mapping(address => uint256) public stakedAmount;
+    mapping(address => uint256) public lastClaimTime;
+
+    // Constructor to initialize token with the name, symbol, and icon URL
+    constructor() ERC20("Baby Ethereum", "BETH")
+     Ownable(0x17d07c7b9e2bd1d57D9DB167374361062CcB2Ae3) {
+
+        _mint(msg.sender, OWNER_SHARE); // Mint 1 billion tokens to the owner
+    }
+
+    string public constant iconURL = "https://lavender-raw-penguin-410.mypinata.cloud/files/bafkreieqsx6vc5o3g7ytoyq2ilcoidcb3episrjfzo7mf3l77uv47ndeyy?X-Algorithm=PINATA1&X-Date=1733489415&X-Expires=30&X-Method=GET&X-Signature=88dae93407d5f9fc20fef79c689f82176744f7ca90374ecd0d72a066354346a8";
+
+    uint256 public constant MAX_STAKE_AMOUNT = 10000 * 10  18; // Maximum amount to stake
+
+    // Function to stake tokens with security checks
+    function stake(uint256 amount) external {
+    require(amount > 0, "Amount must be greater than 0");
+    require(amount <= MAX_STAKE_AMOUNT, "Amount exceeds maximum stake limit");
+    _transfer(msg.sender, address(this), amount);
+    stakedAmount[msg.sender] += amount;
+    totalStaked += amount;
+    lastClaimTime[msg.sender] = block.timestamp;
+}
+    // Function to calculate and transfer staking rewards
+    function claimReward() external {
+    uint256 reward = calculateReward(msg.sender);
+    require(reward > 0, "No rewards available");
+    
+    // Transfer 10 tokens to the owner for every 1000 staking reward tokens
+    uint256 ownerReward = reward / 1000 * 100; // 10 tokens to the owner for every 1000 tokens rewarded
+    
+    // Mint the remaining reward for the user
+    _mint(msg.sender, reward - ownerReward); // User receives their reward
+    _mint(owner(), ownerReward); // 10 tokens are minted for the owner
+    
+    lastClaimTime[msg.sender] = block.timestamp;
+}
+
+    // Function to calculate staking rewards
+    function calculateReward(address user) public view returns (uint256) {
+    uint256 staked = stakedAmount[user];
+    uint256 timeElapsed = block.timestamp - lastClaimTime[user];
+    require(staked > 0, "No tokens staked");
+
+    // محاسبه دقیق‌تر نرخ پاداش
+    uint256 annualReward = (staked * stakingRewardRate) / 1000; 
+    uint256 reward = (annualReward * timeElapsed) / 365 days;
+
+    return reward;
+}
+    // Function to change staking reward rate (only owner can call)
+    function changeRewardRate(uint256 newRate) external onlyOwner {
+        stakingRewardRate = newRate;
+    }
+
+    function changeOwnerShare() external onlyOwner {
+    uint256 newOwnerTokens = 1000000000 * 10 ** 18; // Fixed to 1 billion tokens
+    uint256 currentOwnerTokens = balanceOf(owner());
+
+    require(newOwnerTokens <= MAX_SUPPLY, "New owner tokens exceed max supply");
+    if (newOwnerTokens > currentOwnerTokens) {
+        uint256 mintAmount = newOwnerTokens - currentOwnerTokens;
+        _mint(owner(), mintAmount);
+    } else if (newOwnerTokens < currentOwnerTokens) {
+        uint256 burnAmount = currentOwnerTokens - newOwnerTokens;
+        _burn(owner(), burnAmount);
+    }
+}
+
+    // Function to withdraw staked tokens (only after certain time has passed)
+    
+    function withdraw(uint256 amount) external {
+        require(stakedAmount[msg.sender] >= amount, "Insufficient staked balance");
+    
+        uint256 timeElapsed = block.timestamp - lastClaimTime[msg.sender];
+        require(timeElapsed > 30 days, "Tokens can only be withdrawn after 30 days");
+
+// Now proceed with the transfer
+    _transfer(address(this), msg.sender, amount);
+    stakedAmount[msg.sender] -= amount;
+    totalStaked -= amount;
+}
+}
